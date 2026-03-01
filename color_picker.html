@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>Выбор цвета</title>
+    <style>
+        body { margin: 0; padding: 10px; background: #212121; color: white; text-align: center; }
+        canvas { max-width: 100%; height: auto; border: 2px solid #444; cursor: crosshair; }
+        .info { margin-top: 10px; }
+        .rgb { font-family: monospace; font-size: 18px; }
+        .color-box { width: 50px; height: 50px; display: inline-block; border-radius: 8px; margin-left: 10px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <h3>Нажмите на точку на фото</h3>
+    <canvas id="canvas"></canvas>
+    <div class="info">
+        <span class="rgb" id="rgb">—</span>
+        <span class="color-box" id="colorBox" style="background: gray;"></span>
+    </div>
+    <button id="sendBtn" disabled>Отправить цвет</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand(); // разворачиваем на весь экран
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const rgbSpan = document.getElementById('rgb');
+        const colorBox = document.getElementById('colorBox');
+        const sendBtn = document.getElementById('sendBtn');
+
+        let selectedColor = null;
+        let img = new Image();
+        
+        // Получаем file_id из параметров запуска Web App
+        const initData = tg.initDataUnsafe;
+        const fileId = initData.file_id; // предполагаем, что бот передал file_id
+
+        if (!fileId) {
+            alert('Ошибка: не получен идентификатор файла');
+            tg.close();
+        }
+
+        // Формируем прямую ссылку на фото через Telegram API
+        // (Требуется бот-сервер для прокси, либо используем прямой URL от Telegram)
+        // Самый простой способ: бот отправляет вместе с кнопкой и ссылку на скачивание.
+        // Мы будем использовать URL, который бот передаст через параметры.
+        const photoUrl = initData.photo_url; // бот должен передать и это
+
+        if (!photoUrl) {
+            alert('Ошибка: не получен URL фото');
+            tg.close();
+        }
+
+        img.crossOrigin = 'Anonymous';
+        img.src = photoUrl;
+        img.onload = function() {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+        };
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = img.width / rect.width;
+            const scaleY = img.height / rect.height;
+            const x = Math.floor((e.clientX - rect.left) * scaleX);
+            const y = Math.floor((e.clientY - rect.top) * scaleY);
+            if (x < 0 || y < 0 || x >= img.width || y >= img.height) return;
+
+            const pixel = ctx.getImageData(x, y, 1, 1).data;
+            const r = pixel[0], g = pixel[1], b = pixel[2];
+            selectedColor = { r, g, b };
+            rgbSpan.textContent = `RGB(${r},${g},${b})`;
+            colorBox.style.backgroundColor = `rgb(${r},${g},${b})`;
+            sendBtn.disabled = false;
+        });
+
+        sendBtn.addEventListener('click', () => {
+            if (selectedColor) {
+                tg.sendData(JSON.stringify(selectedColor));
+                tg.close();
+            }
+        });
+    </script>
+</body>
+</html>
