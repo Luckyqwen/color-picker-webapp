@@ -11,7 +11,7 @@ import logging
 import re
 import io
 import os
-import json  # <-- добавили
+import json
 import aiofiles
 import numpy as np
 import colour
@@ -32,6 +32,7 @@ from database import (
 )
 
 # ==================== Импорт цветовых баз ====================
+# Убедитесь, что эти файлы существуют в проекте (даже пустые списки)
 from ncs2050_full import NCS_COLORS as NCS2050
 from html_colors import HTML_COLORS
 try:
@@ -60,7 +61,7 @@ bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 # ==================== URL для Web App ====================
-WEBAPP_URL = "https://luckyqwen.github.io/color-picker-webapp/color_picker.html"  # замените на реальный
+WEBAPP_URL = "https://luckyqwen.github.io/color-picker-webapp/color_picker.html"
 
 # ==================== Папка с готовыми изображениями ====================
 IMAGE_FOLDER = "ncs_images"
@@ -153,7 +154,6 @@ def get_lab_for_sherwin_williams(color):
 def get_top_n_all_lab(target_rgb, n=10):
     target_lab = rgb_to_lab(target_rgb)
     candidates = []
-
     for c in NCS2050:
         dist = colour.delta_E(get_lab_for_ncs(c), target_lab)
         candidates.append((c, dist, 'ncs'))
@@ -172,13 +172,11 @@ def get_top_n_all_lab(target_rgb, n=10):
     for c in SHERWIN_WILLIAMS_COLORS:
         dist = colour.delta_E(get_lab_for_sherwin_williams(c), target_lab)
         candidates.append((c, dist, 'sherwin_williams'))
-
     candidates.sort(key=lambda x: x[1])
     return candidates[:n]
 
 def get_top_n_all_lab_from_lab(target_lab, n=10):
     candidates = []
-
     for c in NCS2050:
         dist = colour.delta_E(get_lab_for_ncs(c), target_lab)
         candidates.append((c, dist, 'ncs'))
@@ -197,7 +195,6 @@ def get_top_n_all_lab_from_lab(target_lab, n=10):
     for c in SHERWIN_WILLIAMS_COLORS:
         dist = colour.delta_E(get_lab_for_sherwin_williams(c), target_lab)
         candidates.append((c, dist, 'sherwin_williams'))
-
     candidates.sort(key=lambda x: x[1])
     return candidates[:n]
 
@@ -225,7 +222,6 @@ if isinstance(RAL_COLORS, dict):
         for code in codes:
             unified_ral.append({'code': code, 'rgb': rgb})
     RAL_COLORS = unified_ral
-
 for color in RAL_COLORS:
     code = color['code'].upper()
     rgb = color['rgb']
@@ -329,7 +325,6 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("main_"))
 async def main_menu_handler(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.replace("main_", "")
-    
     if action == "pick":
         await state.clear()
         try:
@@ -451,14 +446,11 @@ def create_color_comparison_image(rgb1, rgb2, dist):
 
 # ==================== Функция для отправки результатов подбора ====================
 async def send_color_results(message: types.Message, rgb, source_description):
-    """Отправляет 10 ближайших цветов для заданного RGB."""
     top_colors = get_top_n_all_lab(rgb, n=10)
     if not top_colors:
         await message.answer("❌ Не удалось найти подходящие цвета.", reply_markup=get_main_menu())
         return
-
     await message.answer(f"🎨 {source_description}")
-
     media_group = []
     for i, (color, dist, cat) in enumerate(top_colors):
         if cat == 'ncs':
@@ -475,7 +467,6 @@ async def send_color_results(message: types.Message, rgb, source_description):
             color_name = color.get('code', 'Sherwin-Williams')
         else:
             color_name = str(color.get('code', ''))
-
         caption = f"{cat.upper()}: {color_name}  |  ΔE = {dist:.1f}"
         img_bytes = await get_color_image(color, cat, delta=dist)
         media_group.append(
@@ -484,14 +475,12 @@ async def send_color_results(message: types.Message, rgb, source_description):
                 caption=caption
             )
         )
-
     await message.answer_media_group(media=media_group)
     await message.answer("✅ Подбор завершён. Выберите дальнейшее действие.", reply_markup=get_main_menu())
 
 # ==================== Асинхронное получение изображения цвета ====================
 async def get_color_image(color, cat, delta=None):
     rgb = color['rgb']
-    
     if delta is not None and delta < 1:
         if cat == 'ncs':
             text = color.get('code', 'NCS')
@@ -508,9 +497,7 @@ async def get_color_image(color, cat, delta=None):
         else:
             text = rgb_to_hex(rgb)
         return create_color_image_with_text(rgb, text)
-
     possible_names = []
-    
     if cat == 'ncs':
         code = color.get('code', '')
         possible_names.append(f"{code}.png")
@@ -543,7 +530,6 @@ async def get_color_image(color, cat, delta=None):
         possible_names.append(f"{code.replace(' ', '_')}.png")
     else:
         return create_color_image(rgb)
-
     for name in possible_names:
         file_path = os.path.join(IMAGE_FOLDER, name)
         if os.path.isfile(file_path):
@@ -554,7 +540,6 @@ async def get_color_image(color, cat, delta=None):
             except Exception as e:
                 logger.error(f"Ошибка чтения файла {file_path}: {e}")
                 continue
-
     logger.warning(f"Файл не найден для {cat} {color.get('code', color.get('name', 'unknown'))}, генерирую.")
     return create_color_image(rgb)
 
@@ -565,7 +550,6 @@ async def handle_compare_photo(message: types.Message, state: FSMContext):
     photo_bytes = await bot.download_file(file.file_path)
     color_thief = ColorThief(photo_bytes)
     dominant_color = color_thief.get_color(quality=1)
-
     current_state = await state.get_state()
     if current_state == CompareStates.waiting_color1.state:
         await state.update_data(color1=dominant_color)
@@ -600,7 +584,6 @@ async def handle_compare_text(message: types.Message, state: FSMContext):
             reply_markup=get_cancel_keyboard()
         )
         return
-
     current_state = await state.get_state()
     if current_state == CompareStates.waiting_color1.state:
         await state.update_data(color1=rgb)
@@ -721,29 +704,23 @@ async def order_volume(message: types.Message, state: FSMContext):
 @dp.message(F.photo)
 async def handle_photo_pick(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
-    # Если мы в состоянии сравнения – обрабатываем там
     if current_state in (CompareStates.waiting_color1.state, CompareStates.waiting_color2.state):
         await handle_compare_photo(message, state)
         return
-    # Если в состоянии заказа – обрабатываем в order_photo
     if current_state == OrderStates.waiting_photo.state:
         await order_photo(message, state)
         return
-
-    # Сохраняем информацию о фото в состоянии
     photo = message.photo[-1]
     file_id = photo.file_id
     file = await bot.get_file(file_id)
     photo_url = f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file.file_path}"
     await state.update_data(last_photo_id=file_id, last_photo_url=photo_url)
-
-    # Создаём клавиатуру с Web App и кнопкой доминирующего цвета
-    web_app = WebAppInfo(url=f"{WEBAPP_URL}?file_id={file_id}&photo_url={photo_url}")
+    web_app_url = f"{WEBAPP_URL}?file_id={file_id}&photo_url={photo_url}"
+    web_app = WebAppInfo(url=web_app_url)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎯 Выбрать цвет на фото", web_app=web_app)],
         [InlineKeyboardButton(text="🔍 Искать по всему фото (доминирующий)", callback_data="use_dominant")]
     ])
-
     await message.answer(
         "Выберите действие: точно указать цвет на фото или использовать автоматический доминирующий цвет.",
         reply_markup=keyboard
@@ -758,33 +735,35 @@ async def use_dominant(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Не удалось найти фото. Отправьте его ещё раз.")
         await callback.answer()
         return
-
-    # Скачиваем фото и определяем доминирующий цвет
     file = await bot.get_file(file_id)
     photo_bytes = await bot.download_file(file.file_path)
     color_thief = ColorThief(photo_bytes)
     dominant_color = color_thief.get_color(quality=1)
-
-    # Отправляем результаты подбора
     await send_color_results(callback.message, dominant_color, f"🎨 Доминирующий цвет: RGB{dominant_color}")
     await callback.answer()
-    await state.update_data(last_photo_id=None)  # очищаем, чтобы не мешало
+    await state.update_data(last_photo_id=None)
 
 # ==================== Обработчик данных от Web App ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: types.Message, state: FSMContext):
     try:
-        data = json.loads(message.web_app_data.data)
-        r = int(data['r'])
-        g = int(data['g'])
-        b = int(data['b'])
+        data_str = message.web_app_data.data
+        logger.info(f"📦 Получены web_app_data: {data_str}")
+
+        parts = data_str.strip().split()
+        if len(parts) != 3:
+            raise ValueError("Неверное количество чисел")
+
+        r, g, b = map(int, parts)
         selected_rgb = (r, g, b)
-    except (KeyError, ValueError, TypeError):
-        await message.answer("❌ Ошибка при получении цвета из Web App.")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка парсинга web_app_data: {e}")
+        await message.answer("❌ Ошибка при получении цвета. Ожидалось три числа через пробел.")
         return
 
     await send_color_results(message, selected_rgb, f"🎨 Вы выбрали цвет: RGB{selected_rgb}")
-    await state.update_data(last_photo_id=None)  # очищаем
+    await state.update_data(last_photo_id=None)
 
 # ==================== Обработка текста (включая Lab) ====================
 @dp.message(F.text)
@@ -805,9 +784,7 @@ async def handle_text_input(message: types.Message, state: FSMContext):
     if current_state == OrderStates.waiting_volume.state:
         await order_volume(message, state)
         return
-
     text = message.text.strip()
-    
     target_lab = parse_lab_input(text)
     if target_lab is not None:
         top_colors = get_top_n_all_lab_from_lab(target_lab, n=10)
@@ -815,11 +792,6 @@ async def handle_text_input(message: types.Message, state: FSMContext):
             await message.answer("❌ Не удалось найти подходящие цвета.", reply_markup=get_main_menu())
             return
         await message.answer(f"🔍 Поиск по Lab: L={target_lab[0]:.2f}, a={target_lab[1]:.2f}, b={target_lab[2]:.2f}")
-        # Отправляем результаты (нужно адаптировать, так как у нас есть top_colors, но нет RGB)
-        # Для простоты вызовем send_color_results с фиктивным RGB? Но у нас нет RGB.
-        # Лучше создать отдельную функцию send_color_results_from_lab.
-        # Но для краткости оставим как есть – нужно дублировать код.
-        # Временно скопируем кусок отправки.
         media_group = []
         for i, (color, dist, cat) in enumerate(top_colors):
             if cat == 'ncs':
@@ -836,7 +808,6 @@ async def handle_text_input(message: types.Message, state: FSMContext):
                 color_name = color.get('code', 'Sherwin-Williams')
             else:
                 color_name = str(color.get('code', ''))
-
             caption = f"{cat.upper()}: {color_name}  |  ΔE = {dist:.1f}"
             img_bytes = await get_color_image(color, cat, delta=dist)
             media_group.append(
@@ -848,7 +819,6 @@ async def handle_text_input(message: types.Message, state: FSMContext):
         await message.answer_media_group(media=media_group)
         await message.answer("✅ Подбор завершён. Выберите дальнейшее действие.", reply_markup=get_main_menu())
         return
-
     rgb = await parse_color_input(text)
     if not rgb:
         await message.answer(
@@ -857,7 +827,6 @@ async def handle_text_input(message: types.Message, state: FSMContext):
             reply_markup=get_main_menu()
         )
         return
-
     text_upper = text.upper()
     text_lower = text.lower()
     if text_upper in ncs_code_to_rgb:
@@ -877,7 +846,6 @@ async def handle_text_input(message: types.Message, state: FSMContext):
         input_name = f"HEX #{hex_clean}"
     else:
         input_name = f"RGB{rgb}"
-
     await send_color_results(message, rgb, f"🎨 Введённый цвет: {input_name} (RGB{rgb})")
 
 # ==================== Команда /admin ====================
@@ -891,7 +859,16 @@ async def cmd_admin(message: types.Message):
         await message.answer("📭 Новых заказов нет.")
         return
     for order in orders:
-        order_id, user_id, photo_id, wood, method, gloss, volume, status, created_at = order
+        # order - словарь из database.py (PostgreSQL версия)
+        order_id = order['id']
+        user_id = order['user_id']
+        photo_id = order['photo_file_id']
+        wood = order['wood_type']
+        method = order['application_method']
+        gloss = order['gloss']
+        volume = order['volume']
+        status = order['status']
+        created_at = order['created_at']
         wood_display = wood if wood else "не указано"
         method_display = method if method else "не указано"
         gloss_display = f"{gloss} (0-100)" if gloss is not None else "не указано"
