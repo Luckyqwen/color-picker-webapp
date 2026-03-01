@@ -1,1 +1,0 @@
-python fix_color_files.py
