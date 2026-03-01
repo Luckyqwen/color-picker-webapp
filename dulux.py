@@ -1,1 +1,0 @@
-DULUX_COLORS = []
