@@ -1,76 +1,272 @@
-<script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const rgbSpan = document.getElementById('rgb');
-    const colorBox = document.getElementById('colorBox');
-    const sendBtn = document.getElementById('sendBtn');
-
-    let selectedColor = null;
-    let img = new Image();
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const fileId = urlParams.get('file_id');
-    const photoUrl = urlParams.get('photo_url');
-
-    if (!fileId) {
-        alert('Ошибка: не получен идентификатор файла');
-        tg.close();
-    }
-
-    if (!photoUrl) {
-        alert('Ошибка: не получен URL фото');
-        tg.close();
-    }
-
-    // Загружаем изображение через fetch (обход CORS)
-    fetch(photoUrl)
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.blob();
-        })
-        .then(blob => {
-            const objectUrl = URL.createObjectURL(blob);
-            img.src = objectUrl;
-            img.onload = () => {
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                URL.revokeObjectURL(objectUrl);
-            };
-            img.onerror = () => {
-                alert('Не удалось декодировать изображение');
-                tg.close();
-            };
-        })
-        .catch(error => {
-            alert('Ошибка загрузки: ' + error.message);
-            tg.close();
-        });
-
-    canvas.addEventListener('click', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = img.width / rect.width;
-        const scaleY = img.height / rect.height;
-        const x = Math.floor((e.clientX - rect.left) * scaleX);
-        const y = Math.floor((e.clientY - rect.top) * scaleY);
-        if (x < 0 || y < 0 || x >= img.width || y >= img.height) return;
-
-        const pixel = ctx.getImageData(x, y, 1, 1).data;
-        const r = pixel[0], g = pixel[1], b = pixel[2];
-        selectedColor = { r, g, b };
-        rgbSpan.textContent = `RGB(${r},${g},${b})`;
-        colorBox.style.backgroundColor = `rgb(${r},${g},${b})`;
-        sendBtn.disabled = false;
-    });
-
-    sendBtn.addEventListener('click', () => {
-        if (selectedColor) {
-            tg.sendData(JSON.stringify(selectedColor));
-            tg.close();
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Picker для Telegram</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
-    });
-</script>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px;
+        }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 24px;
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-align: center;
+            color: #222;
+        }
+        canvas {
+            width: 100%;
+            height: auto;
+            border-radius: 16px;
+            border: 2px solid #e0e0e0;
+            background: #eee;
+            cursor: crosshair;
+            margin-bottom: 20px;
+        }
+        .color-panel {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            background: #f0f0f0;
+            padding: 12px 16px;
+            border-radius: 40px;
+        }
+        #rgb {
+            font-size: 18px;
+            font-weight: 500;
+            color: #333;
+            flex: 1;
+        }
+        #colorBox {
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background-color: #ccc;
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            border-radius: 40px;
+            background: #007aff;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        button:disabled {
+            background: #b0b0b0;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        button:not(:disabled):hover {
+            background: #005bbf;
+        }
+        .error {
+            color: #d32f2f;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .info {
+            color: #666;
+            text-align: center;
+            font-size: 14px;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Выберите цвет</h1>
+        <canvas id="canvas"></canvas>
+        <div class="color-panel">
+            <span id="rgb">RGB(?,?,?)</span>
+            <div id="colorBox"></div>
+        </div>
+        <button id="sendBtn" disabled>Отправить</button>
+        <div class="info" id="infoMessage"></div>
+    </div>
+
+    <script>
+        (function() {
+            // --- Определение окружения ---
+            const isTelegram = window.Telegram && window.Telegram.WebApp;
+            let tg = null;
+            if (isTelegram) {
+                tg = window.Telegram.WebApp;
+                tg.ready();
+                tg.expand();
+            } else {
+                console.log('Режим отладки: запущено вне Telegram');
+                // Показываем информационное сообщение
+                const infoDiv = document.getElementById('infoMessage');
+                if (infoDiv) infoDiv.textContent = 'Режим отладки (вне Telegram)';
+            }
+
+            // --- Получение элементов DOM ---
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const rgbSpan = document.getElementById('rgb');
+            const colorBox = document.getElementById('colorBox');
+            const sendBtn = document.getElementById('sendBtn');
+            const infoDiv = document.getElementById('infoMessage');
+
+            // --- Переменные состояния ---
+            let selectedColor = null;
+            let img = new Image();
+            let imageLoaded = false;
+            let originalImageWidth = 0, originalImageHeight = 0;
+
+            // --- Параметры из URL ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const fileId = urlParams.get('file_id');
+            const photoUrl = urlParams.get('photo_url');
+
+            // Валидация параметров (в Telegram они обязательны)
+            if (isTelegram) {
+                if (!fileId) {
+                    alert('Ошибка: не получен идентификатор файла');
+                    tg.close();
+                    return;
+                }
+                if (!photoUrl) {
+                    alert('Ошибка: не получен URL фото');
+                    tg.close();
+                    return;
+                }
+            } else {
+                // Для отладки можно подставить тестовое изображение
+                if (!photoUrl) {
+                    infoDiv.textContent = 'Для теста используйте ?photo_url=ССЫЛКА_НА_ИЗОБРАЖЕНИЕ';
+                }
+            }
+
+            // --- Загрузка изображения ---
+            if (photoUrl) {
+                fetch(photoUrl)
+                    .then(response => {
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        img.src = objectUrl;
+                        img.onload = () => {
+                            // Устанавливаем размер canvas равным размеру изображения
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            // Ограничиваем отображение на CSS, чтобы не вылезало
+                            canvas.style.width = '100%';
+                            canvas.style.height = 'auto';
+                            ctx.drawImage(img, 0, 0);
+                            URL.revokeObjectURL(objectUrl);
+                            imageLoaded = true;
+                            originalImageWidth = img.width;
+                            originalImageHeight = img.height;
+                            if (!isTelegram) {
+                                infoDiv.textContent = 'Изображение загружено, можно выбирать цвет.';
+                            }
+                        };
+                        img.onerror = () => {
+                            alert('Не удалось декодировать изображение');
+                            if (isTelegram) tg.close();
+                        };
+                    })
+                    .catch(error => {
+                        alert('Ошибка загрузки: ' + error.message);
+                        if (isTelegram) tg.close();
+                    });
+            } else {
+                // Если нет photoUrl, показываем заглушку
+                canvas.width = 300;
+                canvas.height = 200;
+                ctx.fillStyle = '#eee';
+                ctx.fillRect(0, 0, 300, 200);
+                ctx.fillStyle = '#999';
+                ctx.font = '16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Нет изображения', 150, 110);
+                if (!isTelegram) {
+                    infoDiv.textContent = 'Добавьте параметр photo_url для загрузки изображения.';
+                }
+            }
+
+            // --- Обработка клика по canvas ---
+            canvas.addEventListener('click', (e) => {
+                if (!imageLoaded) {
+                    alert('Изображение ещё не загружено');
+                    return;
+                }
+
+                const rect = canvas.getBoundingClientRect();
+                // Вычисляем соотношение между отображаемым размером и реальным размером изображения
+                const scaleX = img.width / rect.width;
+                const scaleY = img.height / rect.height;
+
+                // Координаты клика относительно canvas (в пикселях экрана)
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                // Соответствующие координаты в исходном изображении
+                const imgX = Math.floor(clickX * scaleX);
+                const imgY = Math.floor(clickY * scaleY);
+
+                // Проверка границ
+                if (imgX < 0 || imgY < 0 || imgX >= img.width || imgY >= img.height) return;
+
+                // Получаем цвет пикселя
+                const pixel = ctx.getImageData(imgX, imgY, 1, 1).data;
+                const r = pixel[0], g = pixel[1], b = pixel[2];
+                selectedColor = { r, g, b };
+                rgbSpan.textContent = `RGB(${r},${g},${b})`;
+                colorBox.style.backgroundColor = `rgb(${r},${g},${b})`;
+                sendBtn.disabled = false;
+            });
+
+            // --- Обработка кнопки "Отправить" ---
+            sendBtn.addEventListener('click', () => {
+                if (selectedColor) {
+                    if (isTelegram) {
+                        tg.sendData(JSON.stringify(selectedColor));
+                        tg.close();
+                    } else {
+                        // В режиме отладки просто показываем результат
+                        alert('Отправка данных (отладка): ' + JSON.stringify(selectedColor));
+                        // Можно также скопировать в буфер обмена
+                        navigator.clipboard?.writeText(JSON.stringify(selectedColor));
+                    }
+                }
+            });
+
+            // Дополнительно: если пользователь тыкнет вне canvas, ничего не происходит
+        })();
+    </script>
+</body>
+</html>
