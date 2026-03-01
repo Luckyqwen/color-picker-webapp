@@ -1,3 +1,8 @@
-Flask
-flask-cors
-requests
+aiogram==2.25.1
+asyncpg
+colour-science
+numpy
+Pillow
+colorthief
+aiofiles
+python-dotenv
