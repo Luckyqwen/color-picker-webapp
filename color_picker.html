@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Color Picker для Telegram</title>
+    <!-- Подключаем скрипт Telegram Web App (для гарантии) -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -131,7 +133,7 @@
         </div>
         <button id="sendBtn" disabled>Отправить</button>
         
-        <!-- Кнопка для загрузки локального файла (помогает при проблемах с CORS) -->
+        <!-- Кнопка для локальной загрузки (обходит CORS) -->
         <div class="file-input-container">
             <label for="localFileInput" class="file-label">📁 Загрузить локально</label>
             <input type="file" id="localFileInput" accept="image/*">
@@ -150,6 +152,9 @@
                 tg = window.Telegram.WebApp;
                 tg.ready();
                 tg.expand();
+                console.log('Telegram Web App инициализирован');
+            } else {
+                console.log('Режим отладки: запущено вне Telegram');
             }
 
             // --- Элементы DOM ---
@@ -166,7 +171,6 @@
             let selectedColor = null;
             let img = new Image();
             let imageLoaded = false;
-            let originalImageWidth = 0, originalImageHeight = 0;
 
             // --- Очистка сообщений ---
             function clearMessages() {
@@ -192,18 +196,15 @@
                     ctx.drawImage(img, 0, 0);
                     URL.revokeObjectURL(objectUrl);
                     imageLoaded = true;
-                    originalImageWidth = img.width;
-                    originalImageHeight = img.height;
                     clearMessages();
                     infoDiv.textContent = 'Изображение загружено. Кликните на него, чтобы выбрать цвет.';
                 };
                 img.onerror = () => {
                     showError('Не удалось декодировать изображение');
-                    if (isTelegram) tg.close();
                 };
             }
 
-            // --- Загрузка изображения по URL ---
+            // --- Загрузка изображения по URL (с обработкой ошибок) ---
             function loadImageFromUrl(url) {
                 clearMessages();
                 infoDiv.textContent = 'Загрузка изображения...';
@@ -215,9 +216,8 @@
                     .then(blob => loadImageFromBlob(blob))
                     .catch(error => {
                         console.error('Fetch error:', error);
-                        showError(`Ошибка загрузки: ${error.message}. Попробуйте загрузить файл локально.`);
-                        // Автоматически переключаем пользователя на локальную загрузку
-                        infoDiv.textContent = 'Используйте кнопку "Загрузить локально"';
+                        showError(`Ошибка загрузки: ${error.message}. Используйте кнопку "Загрузить локально".`);
+                        infoDiv.textContent = 'Нажмите "Загрузить локально", чтобы выбрать файл.';
                     });
             }
 
@@ -230,38 +230,18 @@
                     return;
                 }
                 loadImageFromBlob(file);
-                // Сбрасываем input, чтобы можно было загрузить тот же файл повторно
-                fileInput.value = '';
+                fileInput.value = ''; // сбрасываем, чтобы можно было загрузить тот же файл снова
             });
 
             // --- Параметры из URL ---
             const urlParams = new URLSearchParams(window.location.search);
-            const fileId = urlParams.get('file_id');
             const photoUrl = urlParams.get('photo_url');
 
-            // В Telegram Mini App обязательно должны быть параметры
-            if (isTelegram) {
-                if (!fileId) {
-                    alert('Ошибка: не получен идентификатор файла');
-                    tg.close();
-                    return;
-                }
-                if (!photoUrl) {
-                    alert('Ошибка: не получен URL фото');
-                    tg.close();
-                    return;
-                }
-            }
-
-            // --- Запуск загрузки ---
+            // Если есть photo_url, пытаемся загрузить, иначе предлагаем локально
             if (photoUrl) {
                 loadImageFromUrl(photoUrl);
             } else {
-                infoDiv.textContent = 'Добавьте параметр photo_url для загрузки изображения или выберите файл локально.';
-                
-                // Для отладки можно раскомментировать следующую строку, чтобы сразу подставить тестовое изображение из репозитория
-                // (предварительно загрузите sample.jpg в ту же папку)
-                // loadImageFromUrl('sample.jpg');
+                infoDiv.textContent = 'Добавьте параметр photo_url для автоматической загрузки или выберите файл локально.';
             }
 
             // --- Обработка клика по canvas ---
@@ -292,16 +272,21 @@
                 clearMessages();
             });
 
-            // --- Отправка цвета ---
+            // --- Обработка кнопки "Отправить" ---
             sendBtn.addEventListener('click', () => {
                 if (selectedColor) {
+                    // Формируем строку "r g b"
+                    const rgbString = `${selectedColor.r} ${selectedColor.g} ${selectedColor.b}`;
+                    
                     if (isTelegram) {
-                        tg.sendData(JSON.stringify(selectedColor));
-                        tg.close();
+                        // Внутри Telegram отправляем данные боту
+                        tg.sendData(rgbString);
+                        tg.close(); // закрываем веб-приложение
                     } else {
-                        alert('Отправка данных (отладка): ' + JSON.stringify(selectedColor));
-                        navigator.clipboard?.writeText(JSON.stringify(selectedColor)).then(() => {
-                            infoDiv.textContent = 'Цвет скопирован в буфер обмена';
+                        // Режим отладки вне Telegram
+                        alert('Отправка данных (отладка): ' + rgbString);
+                        navigator.clipboard?.writeText(rgbString).then(() => {
+                            infoDiv.textContent = 'Строка скопирована в буфер обмена';
                         });
                     }
                 }
