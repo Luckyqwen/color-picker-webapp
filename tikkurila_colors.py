@@ -1,1 +1,0 @@
-TIKKURILA_COLORS = []
