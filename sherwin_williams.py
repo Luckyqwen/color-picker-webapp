@@ -1,1 +1,1 @@
-SHERWIN_WILLIAMS_COLORS = []
+python fix_color_files.py

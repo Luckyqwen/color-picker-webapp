@@ -1,4 +1,4 @@
-aiogram==3.18.0
+aiogram==2.25.1
 asyncpg
 colour-science
 numpy
